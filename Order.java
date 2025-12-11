@@ -1,4 +1,4 @@
-package exp5;
+package exp;
 
 import java.io.*;
 import java.time.LocalDateTime;
@@ -12,7 +12,7 @@ public class Order implements Serializable {
     private Student student;
     private Runner runner;
     private OrderStatus status;
-    private boolean urgent;          // 紧急标志
+    private boolean urgent;
     private LocalDateTime createTime;
 
     /* ---------------- 构造 & ID 生成 ---------------- */
@@ -25,9 +25,18 @@ public class Order implements Serializable {
         this.status = OrderStatus.PENDING;
         this.runner = null;
     }
+
     private String generateId() {
         return createTime.toString().replaceAll("\\D", "") +
                 ThreadLocalRandom.current().nextInt(100, 999);
+    }
+
+    /* ---------------- 终态资源释放 ---------------- */
+    private void releaseRunner() {
+        if (this.runner != null) {
+            this.runner.completeOrder(); // 状态变空闲
+            this.runner = null;          // 解除引用
+        }
     }
 
     /* ---------------- 状态机核心 ---------------- */
@@ -36,6 +45,7 @@ public class Order implements Serializable {
         switch (status) {
             case PENDING -> {
                 if (newStatus == OrderStatus.DELIVERING || newStatus == OrderStatus.CANCELED) {
+                    if (newStatus == OrderStatus.CANCELED) releaseRunner(); // 可能未分配也要保险
                     setStatus(newStatus);
                 } else {
                     throw new InvalidOrderStateException("Pending → " + newStatus + " 非法");
@@ -43,6 +53,7 @@ public class Order implements Serializable {
             }
             case DELIVERING -> {
                 if (newStatus == OrderStatus.COMPLETED || newStatus == OrderStatus.CANCELED) {
+                    releaseRunner();   // 终态统一释放
                     setStatus(newStatus);
                 } else {
                     throw new InvalidOrderStateException("Delivering → " + newStatus + " 非法");

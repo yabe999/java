@@ -1,4 +1,4 @@
-package exp5;
+package exp;
 
 public interface OrderState {
     OrderStatus getStatus();

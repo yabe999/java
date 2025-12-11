@@ -1,4 +1,4 @@
-package exp5;
+package exp;
 
 public final class UserFactory {
     private static int stuSeq = 0;

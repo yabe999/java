@@ -1,4 +1,4 @@
-package exp5;
+package exp;
 
 import java.io.Serializable;
 
@@ -16,6 +16,9 @@ public class Student implements Serializable {
     }
     public String getName() { return name; }
     public String getPhone() { return phone; }
+    public String getMajor() {
+        return major;
+    }
     @Override
     public String toString() {
         return name + "[" + major + "]";

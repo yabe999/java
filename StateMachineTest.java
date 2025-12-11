@@ -1,4 +1,4 @@
-package exp5;
+package exp;
 
 public class StateMachineTest {
     public static void main(String[] args) {

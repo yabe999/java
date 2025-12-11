@@ -1,4 +1,4 @@
-package exp5;
+package exp;
 
 import javax.swing.*;
 import java.awt.*;

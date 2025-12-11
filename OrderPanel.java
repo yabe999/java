@@ -1,4 +1,4 @@
-package exp5;
+package exp;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -18,28 +18,29 @@ public class OrderPanel extends JPanel {
         table = new JTable(model);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
-        /* ---- 彩色状态列 ---- */
-        TableColumn statusCol = table.getColumnModel().getColumn(2); // 第3列=状态
+        /* ---- 彩色状态列（按中文文字刷色） ---- */
+        TableColumn statusCol = table.getColumnModel().getColumn(2);
         statusCol.setCellRenderer(new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value,
                                                            boolean isSelected, boolean hasFocus,
                                                            int row, int column) {
                 Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                if (value instanceof OrderStatus s) {
-                    switch (s) {
-                        case PENDING    -> c.setBackground(Color.YELLOW);
-                        case DELIVERING -> c.setBackground(Color.ORANGE);
-                        case COMPLETED  -> c.setBackground(Color.GREEN);
-                        case CANCELED   -> c.setBackground(Color.RED);
-                        default         -> c.setBackground(Color.WHITE);
+                if (!isSelected) {                  // 保持选中高亮
+                    switch (value.toString()) {     // 中文匹配
+                        case "待接单"  -> c.setBackground(new Color(0xE3F2FD));
+                        case "配送中"  -> c.setBackground(new Color(0xFFF9C4));
+                        case "已完成"  -> c.setBackground(new Color(0xC8E6C9));
+                        case "已取消",
+                             "超时"   -> c.setBackground(new Color(0xFFCDD2));
+                        default      -> c.setBackground(Color.WHITE);
                     }
-                    c.setForeground(Color.BLACK);
                 }
+                c.setForeground(Color.BLACK);
                 return c;
             }
         });
-        statusCol.setPreferredWidth(80); // 保证看得见
+        statusCol.setPreferredWidth(80);
 
         /* ---- 按钮栏 ---- */
         JPanel bar = new JPanel();
@@ -48,6 +49,7 @@ public class OrderPanel extends JPanel {
         bar.add(new JButton(new CompleteOrderAction()));
         bar.add(new JButton(new CancelOrderAction()));
         bar.add(new JButton(new WithdrawOrderAction(table)));
+        bar.add(new JButton(new DeleteOrderAction()));   // ← 新增删除订单
         bar.add(new JButton(new ManualSaveAction()));
         bar.add(new JButton(new RefreshAction()));
         add(bar, BorderLayout.NORTH);
@@ -61,7 +63,50 @@ public class OrderPanel extends JPanel {
         add(new JScrollPane(log), BorderLayout.SOUTH);
     }
 
-    /* ---------------- 内部动作类 ---------------- */
+    /* ---------------- 新增：删除订单（仅非进行中） ---------------- */
+    private class DeleteOrderAction extends AbstractAction {
+        DeleteOrderAction() { super("删除订单"); }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            int row = table.getSelectedRow();
+            if (row == -1) {
+                JOptionPane.showMessageDialog(OrderPanel.this, "请先选择要删除的订单！");
+                return;
+            }
+            Order order = Main.orders.get(row);
+            OrderStatus st = order.getStatus();
+
+            // 允许删除：未分配且待接单，或已完成/已取消
+            boolean canDel = (st == OrderStatus.PENDING && order.getRunner() == null)
+                    || st == OrderStatus.COMPLETED
+                    || st == OrderStatus.CANCELED;
+
+            if (!canDel) {
+                JOptionPane.showMessageDialog(OrderPanel.this,
+                        "只能删除【未分配且待接单】或【已完成/已取消】的订单！");
+                return;
+            }
+
+            int ok = JOptionPane.showConfirmDialog(OrderPanel.this,
+                    "确认删除订单 " + order.getOrderId() + "？",
+                    "删除确认", JOptionPane.YES_NO_OPTION);
+            if (ok != JOptionPane.YES_OPTION) return;
+
+            Main.orders.remove(order);
+            model.refresh();
+            // 可选：立即保存
+            new SwingWorker<Void, Void>() {
+                @Override protected Void doInBackground() throws Exception {
+                    Main.saveData();
+                    return null;
+                }
+            }.execute();
+            JOptionPane.showMessageDialog(OrderPanel.this, "订单已删除！");
+        }
+    }
+
+    /* ---------------- 原有动作类（以下无改动） ---------------- */
     private class PlaceOrderAction extends AbstractAction {
         PlaceOrderAction() { super("下单"); }
         @Override public void actionPerformed(ActionEvent e) {
@@ -110,7 +155,6 @@ public class OrderPanel extends JPanel {
         }
     }
 
-    /* ---------------- 完成订单（释放跑腿员） ---------------- */
     private class CompleteOrderAction extends AbstractAction {
         CompleteOrderAction() { super("完成订单"); }
         @Override public void actionPerformed(ActionEvent e) {
@@ -128,16 +172,12 @@ public class OrderPanel extends JPanel {
             if (order == null) return;
 
             order.changeStatus(OrderStatus.COMPLETED);
-            // 关键：释放跑腿员
-            if (order.getRunner() != null) {
-                order.getRunner().completeOrder();
-            }
+            if (order.getRunner() != null) order.getRunner().completeOrder();
             model.refresh();
             JOptionPane.showMessageDialog(OrderPanel.this, "订单已完成！");
         }
     }
 
-    /* ---------------- 取消订单（释放跑腿员） ---------------- */
     private class CancelOrderAction extends AbstractAction {
         CancelOrderAction() { super("取消订单"); }
         @Override public void actionPerformed(ActionEvent e) {
@@ -155,7 +195,6 @@ public class OrderPanel extends JPanel {
                     canCancel.toArray(), canCancel.get(0));
             if (order == null) return;
 
-            // 若已分配，释放跑腿员
             if (order.getStatus() == OrderStatus.DELIVERING && order.getRunner() != null) {
                 order.getRunner().completeOrder();
             }
@@ -165,7 +204,6 @@ public class OrderPanel extends JPanel {
         }
     }
 
-    /* ---------------- 撤回订单（仅 PENDING） ---------------- */
     private class WithdrawOrderAction extends AbstractAction {
         private final JTable table;
         WithdrawOrderAction(JTable table) { super("撤回订单"); this.table = table; }
@@ -193,7 +231,6 @@ public class OrderPanel extends JPanel {
         }
     }
 
-    /* ---------------- 手动保存 ---------------- */
     private class ManualSaveAction extends AbstractAction {
         ManualSaveAction() { super("手动保存"); }
         @Override public void actionPerformed(ActionEvent e) {
@@ -208,7 +245,6 @@ public class OrderPanel extends JPanel {
         }
     }
 
-    /* ---------------- 刷新 ---------------- */
     private class RefreshAction extends AbstractAction {
         RefreshAction() { super("刷新"); }
         @Override public void actionPerformed(ActionEvent e) { model.refresh(); }
